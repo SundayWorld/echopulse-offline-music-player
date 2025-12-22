@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "EchoPulse – Offline Music Player",
+    "slug": "echopulse-offline-music-player",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.echopulse.offlineplayer",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"]
+      }
+    },
+
+    "android": {
+      "package": "app.echopulse.offlineplayer",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundImage": "./assets/images/adaptive-icon-bg.png"
+      },
+      "permissions": [
+        "READ_MEDIA_AUDIO",
+        "FOREGROUND_SERVICE"
+      ]
+    },
+
+    "web": {
+      "favicon": "./assets/images/favicon.png"
+    },
+
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
