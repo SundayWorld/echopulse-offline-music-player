@@ -16,7 +16,6 @@ import { Track } from '@/types/music';
 import MiniPlayer from '@/components/MiniPlayer';
 import BannerAdView from '@/components/BannerAdView';
 
-
 export default function FavoritesScreen() {
   const { getFavoriteTracks } = useMusicLibrary();
   const { playQueue } = useMusicPlayer();
@@ -29,9 +28,15 @@ export default function FavoritesScreen() {
       style={styles.trackItem}
       onPress={() => playQueue(favoriteTracks, index)}
     >
-      <View style={[styles.trackArtwork, { backgroundColor: accentColor.primary + '30' }]}>
+      <View
+        style={[
+          styles.trackArtwork,
+          { backgroundColor: accentColor.primary + '30' },
+        ]}
+      >
         <Music size={20} color={COLORS.textSecondary} />
       </View>
+
       <View style={styles.trackInfo}>
         <Text style={styles.trackTitle} numberOfLines={1}>
           {item.title}
@@ -40,7 +45,12 @@ export default function FavoritesScreen() {
           {item.artist}
         </Text>
       </View>
-      <Heart size={20} color={accentColor.primary} fill={accentColor.primary} />
+
+      <Heart
+        size={20}
+        color={accentColor.primary}
+        fill={accentColor.primary}
+      />
     </TouchableOpacity>
   );
 
@@ -58,7 +68,7 @@ export default function FavoritesScreen() {
             Tap the heart icon on any song to add it to your favorites
           </Text>
         </View>
-          ) : (
+      ) : (
         <FlatList
           data={favoriteTracks}
           renderItem={renderTrackItem}
@@ -68,9 +78,10 @@ export default function FavoritesScreen() {
       )}
 
       <BannerAdView />
-
       <MiniPlayer />
-
+    </SafeAreaView>
+  );
+}
 
 const styles = StyleSheet.create({
   container: {
