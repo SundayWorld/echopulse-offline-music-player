@@ -13,10 +13,13 @@ interface Settings {
 
 export const [SettingsProvider, useSettings] = createContextHook(() => {
   const [accentColorIndex, setAccentColorIndex] = useState<number>(0);
-  const [equalizerPreset, setEqualizerPreset] = useState<EqualizerPreset>('normal');
+  const [equalizerPreset, setEqualizerPreset] =
+    useState<EqualizerPreset>('normal');
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
-  const [isPremiumUnlocked, setIsPremiumUnlocked] = useState<boolean>(false);
 
+  // ✅ Session-only premium unlock
+  const [isPremiumUnlocked, setIsPremiumUnlocked] =
+    useState<boolean>(false);
 
   useEffect(() => {
     loadSettings();
@@ -39,38 +42,44 @@ export const [SettingsProvider, useSettings] = createContextHook(() => {
 
   const saveSettings = async (settings: Settings) => {
     try {
-      await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+      await AsyncStorage.setItem(
+        SETTINGS_STORAGE_KEY,
+        JSON.stringify(settings)
+      );
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
   };
 
   const setAccentColor = (index: number) => {
-  setAccentColorIndex(index);
-  saveSettings({ accentColorIndex: index, equalizerPreset });
-};
+    setAccentColorIndex(index);
+    saveSettings({ accentColorIndex: index, equalizerPreset });
+  };
 
-const setEqualizer = (preset: EqualizerPreset) => {
-  setEqualizerPreset(preset);
-  saveSettings({ accentColorIndex, equalizerPreset: preset });
-};
+  const setEqualizer = (preset: EqualizerPreset) => {
+    setEqualizerPreset(preset);
+    saveSettings({ accentColorIndex, equalizerPreset: preset });
+  };
 
-// ✅ NEW — session only (no AsyncStorage)
-const unlockPremiumForSession = () => {
-  setIsPremiumUnlocked(true);
-};
+  const unlockPremiumForSession = () => {
+    setIsPremiumUnlocked(true);
+  };
+
+  const accentColor: AccentColor = ACCENT_COLORS[accentColorIndex];
 
   return {
-  accentColor,
-  accentColorIndex,
-  setAccentColor,
+    accentColor,
+    accentColorIndex,
+    setAccentColor,
 
-  equalizerPreset,
-  setEqualizer,
+    equalizerPreset,
+    setEqualizer,
 
-  // NEW (session only)
-  isPremiumUnlocked,
-  unlockPremiumForSession,
+    // premium
+    isPremiumUnlocked,
+    unlockPremiumForSession,
 
-  isLoaded,
-};
+    isLoaded,
+  };
+});
+
