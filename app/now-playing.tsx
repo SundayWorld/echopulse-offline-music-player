@@ -65,7 +65,8 @@ export default function NowPlayingScreen() {
 
   if (!currentTrack) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
             <ChevronDown size={32} color={COLORS.text} />

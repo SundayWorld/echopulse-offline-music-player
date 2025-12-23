@@ -1,23 +1,30 @@
 import { Link, Stack } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "@/constants/theme";
 
 export default function NotFoundScreen() {
   return (
     <>
-      <Stack.Screen options={{ 
-        title: "Not Found",
-        headerStyle: { backgroundColor: COLORS.surface },
-        headerTintColor: COLORS.text,
-      }} />
-      <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          title: "Not Found",
+          headerStyle: { backgroundColor: COLORS.surface },
+          headerTintColor: COLORS.text,
+        }}
+      />
+
+      <SafeAreaView
+        style={styles.container}
+        edges={["top", "bottom"]}
+      >
         <Text style={styles.title}>Screen not found</Text>
         <Text style={styles.subtitle}>This page doesn&apos;t exist</Text>
 
         <Link href="/" style={styles.link}>
           <Text style={styles.linkText}>Go to Library</Text>
         </Link>
-      </View>
+      </SafeAreaView>
     </>
   );
 }

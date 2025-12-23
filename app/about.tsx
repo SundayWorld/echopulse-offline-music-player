@@ -15,7 +15,8 @@ export default function AboutScreen() {
   const { accentColor } = useSettings();
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+
       <Stack.Screen
         options={{
           title: 'About',
