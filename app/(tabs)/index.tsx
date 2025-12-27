@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Music, Disc, Mic, Folder } from 'lucide-react-native';
@@ -18,12 +19,28 @@ import { Track, Album, Artist, Folder as FolderType } from '@/types/music';
 import MiniPlayer from '@/components/MiniPlayer';
 import BannerAdView from '@/components/BannerAdView';
 
-
 type TabType = 'songs' | 'albums' | 'artists' | 'folders';
 
 export default function LibraryScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('songs');
-  const { tracks, albums, artists, folders, isLoading, hasPermission, recentlyPlayed, lastSelectedTab, updateLastTab } = useMusicLibrary();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const {
+    tracks,
+    albums,
+    artists,
+    folders,
+    recentlyPlayed,
+    lastSelectedTab,
+    updateLastTab,
+    isLoading,
+    hasPermission,
+    loadMoreTracks,
+    isLoadingMore,
+    hasMore,
+    scanLibrary,
+  } = useMusicLibrary();
+
   const { playQueue } = useMusicPlayer();
   const { accentColor } = useSettings();
 
@@ -38,12 +55,20 @@ export default function LibraryScreen() {
     updateLastTab(tab);
   };
 
-  const tabs: { key: TabType; label: string; icon: any }[] = [
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await scanLibrary();
+    setRefreshing(false);
+  };
+
+  const tabs = [
     { key: 'songs', label: 'Songs', icon: Music },
     { key: 'albums', label: 'Albums', icon: Disc },
     { key: 'artists', label: 'Artists', icon: Mic },
     { key: 'folders', label: 'Folders', icon: Folder },
   ];
+
+  /* ---------- RENDER ITEMS ---------- */
 
   const renderTrackItem = ({ item, index }: { item: Track; index: number }) => (
     <TouchableOpacity
@@ -51,87 +76,57 @@ export default function LibraryScreen() {
       onPress={() => playQueue(tracks, index)}
     >
       <View style={[styles.trackArtwork, { backgroundColor: accentColor.primary + '30' }]}>
-        <Music size={20} color={COLORS.textSecondary} />
+        <Music size={18} color={COLORS.textSecondary} />
       </View>
       <View style={styles.trackInfo}>
-        <Text style={styles.trackTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.trackArtist} numberOfLines={1}>
-          {item.artist}
-        </Text>
+        <Text style={styles.trackTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.trackArtist} numberOfLines={1}>{item.artist}</Text>
       </View>
     </TouchableOpacity>
   );
 
   const renderAlbumItem = ({ item }: { item: Album }) => (
-    <TouchableOpacity
-      style={styles.albumItem}
-      onPress={() => playQueue(item.tracks, 0)}
-    >
+    <TouchableOpacity style={styles.albumItem} onPress={() => playQueue(item.tracks, 0)}>
       <View style={[styles.albumArtwork, { backgroundColor: accentColor.primary + '30' }]}>
-        <Text style={styles.albumArtworkText}>
-          {item.name.charAt(0).toUpperCase()}
-        </Text>
+        <Text style={styles.albumArtworkText}>{item.name.charAt(0)}</Text>
       </View>
-      <Text style={styles.albumName} numberOfLines={2}>
-        {item.name}
-      </Text>
-      <Text style={styles.albumArtist} numberOfLines={1}>
-        {item.artist}
-      </Text>
-      <Text style={styles.albumTrackCount}>
-        {item.tracks.length} {item.tracks.length === 1 ? 'song' : 'songs'}
-      </Text>
+      <Text style={styles.albumName} numberOfLines={2}>{item.name}</Text>
+      <Text style={styles.albumArtist} numberOfLines={1}>{item.artist}</Text>
     </TouchableOpacity>
   );
 
   const renderArtistItem = ({ item }: { item: Artist }) => (
-    <TouchableOpacity
-      style={styles.artistItem}
-      onPress={() => playQueue(item.tracks, 0)}
-    >
+    <TouchableOpacity style={styles.artistItem} onPress={() => playQueue(item.tracks, 0)}>
       <View style={[styles.artistAvatar, { backgroundColor: accentColor.primary + '30' }]}>
-        <Text style={styles.artistAvatarText}>
-          {item.name.charAt(0).toUpperCase()}
-        </Text>
+        <Text style={styles.artistAvatarText}>{item.name.charAt(0)}</Text>
       </View>
       <View style={styles.artistInfo}>
-        <Text style={styles.artistName} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <Text style={styles.artistTrackCount}>
-          {item.tracks.length} {item.tracks.length === 1 ? 'song' : 'songs'}
-        </Text>
+        <Text style={styles.artistName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.artistTrackCount}>{item.tracks.length} songs</Text>
       </View>
     </TouchableOpacity>
   );
 
   const renderFolderItem = ({ item }: { item: FolderType }) => (
-    <TouchableOpacity
-      style={styles.folderItem}
-      onPress={() => playQueue(item.tracks, 0)}
-    >
+    <TouchableOpacity style={styles.folderItem} onPress={() => playQueue(item.tracks, 0)}>
       <View style={[styles.folderIcon, { backgroundColor: accentColor.primary + '30' }]}>
-        <Folder size={28} color={accentColor.primary} />
+        <Folder size={24} color={accentColor.primary} />
       </View>
       <View style={styles.folderInfo}>
-        <Text style={styles.folderName} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <Text style={styles.folderTrackCount}>
-          {item.tracks.length} {item.tracks.length === 1 ? 'song' : 'songs'}
-        </Text>
+        <Text style={styles.folderName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.folderTrackCount}>{item.tracks.length} songs</Text>
       </View>
     </TouchableOpacity>
   );
+
+  /* ---------- CONTENT ---------- */
 
   const renderContent = () => {
     if (isLoading) {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={accentColor.primary} />
-          <Text style={styles.loadingText}>Scanning music library...</Text>
+          <Text style={styles.loadingText}>Scanning music…</Text>
         </View>
       );
     }
@@ -139,23 +134,7 @@ export default function LibraryScreen() {
     if (!hasPermission) {
       return (
         <View style={styles.centerContainer}>
-          <Music size={64} color={COLORS.textSecondary} />
           <Text style={styles.emptyTitle}>Storage Permission Required</Text>
-          <Text style={styles.emptyText}>
-            Please grant storage permission to access your music files
-          </Text>
-        </View>
-      );
-    }
-
-    if (tracks.length === 0) {
-      return (
-        <View style={styles.centerContainer}>
-          <Music size={64} color={COLORS.textSecondary} />
-          <Text style={styles.emptyTitle}>No Music Found</Text>
-          <Text style={styles.emptyText}>
-            Add some music files to your device to get started
-          </Text>
         </View>
       );
     }
@@ -173,14 +152,9 @@ export default function LibraryScreen() {
                   onPress={() => playQueue(recentlyPlayed, index)}
                 >
                   <View style={[styles.recentArtwork, { backgroundColor: accentColor.primary + '30' }]}>
-                    <Music size={24} color={COLORS.textSecondary} />
+                    <Music size={18} color={COLORS.textSecondary} />
                   </View>
-                  <Text style={styles.recentTitle} numberOfLines={1}>
-                    {track.title}
-                  </Text>
-                  <Text style={styles.recentArtist} numberOfLines={1}>
-                    {track.artist}
-                  </Text>
+                  <Text style={styles.recentTitle} numberOfLines={1}>{track.title}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -193,6 +167,28 @@ export default function LibraryScreen() {
             renderItem={renderTrackItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={accentColor.primary}
+              />
+            }
+            onEndReached={() => {
+              if (hasMore && !isLoadingMore) {
+                loadMoreTracks();
+              }
+            }}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={
+              isLoadingMore ? (
+                <ActivityIndicator style={{ marginVertical: 16 }} color={accentColor.primary} />
+              ) : null
+            }
+            removeClippedSubviews
+            initialNumToRender={20}
+            maxToRenderPerBatch={20}
+            windowSize={5}
           />
         )}
 
@@ -240,22 +236,11 @@ export default function LibraryScreen() {
           return (
             <TouchableOpacity
               key={tab.key}
-              style={[
-                styles.tab,
-                isActive && { borderBottomColor: accentColor.primary },
-              ]}
+              style={[styles.tab, isActive && { borderBottomColor: accentColor.primary }]}
               onPress={() => handleTabChange(tab.key)}
             >
-              <Icon
-                size={20}
-                color={isActive ? accentColor.primary : COLORS.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: isActive ? accentColor.primary : COLORS.textSecondary },
-                ]}
-              >
+              <Icon size={20} color={isActive ? accentColor.primary : COLORS.textSecondary} />
+              <Text style={[styles.tabLabel, { color: isActive ? accentColor.primary : COLORS.textSecondary }]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -263,233 +248,83 @@ export default function LibraryScreen() {
         })}
       </View>
 
-    {renderContent()}
+      {renderContent()}
 
-<BannerAdView />
-
-<MiniPlayer />
-
+      <BannerAdView />
+      <MiniPlayer />
     </SafeAreaView>
   );
 }
 
+/* ---------- STYLES ---------- */
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold' as const,
-    color: COLORS.text,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { paddingHorizontal: 20, paddingVertical: 16 },
+  headerTitle: { fontSize: 32, fontWeight: 'bold', color: COLORS.text },
+
   tabBar: {
-    flexDirection: 'row' as const,
+    flexDirection: 'row',
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   tab: {
     flex: 1,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    flexDirection: 'row',
+    justifyContent: 'center',
     paddingVertical: 12,
     gap: 6,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  tabLabel: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-  content: {
-    flex: 1,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 40,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: COLORS.textSecondary,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600' as const,
-    color: COLORS.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: 'center' as const,
-  },
-  recentSection: {
-    paddingVertical: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold' as const,
-    color: COLORS.text,
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
-  recentItem: {
-    width: 120,
-    marginLeft: 20,
-  },
+  tabLabel: { fontSize: 14, fontWeight: '600' },
+
+  content: { flex: 1 },
+
+  recentSection: { paddingVertical: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', paddingHorizontal: 20 },
+
+  recentItem: { width: 88, marginLeft: 16 },
   recentArtwork: {
-    width: 120,
-    height: 120,
+    width: 88,
+    height: 88,
     borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
   },
-  recentTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  recentArtist: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  listContent: {
-    paddingBottom: MINI_PLAYER_HEIGHT + 16,
-  },
-  gridContent: {
-    paddingHorizontal: 16,
-    paddingBottom: MINI_PLAYER_HEIGHT + 16,
-  },
-  trackItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  trackArtwork: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginRight: 12,
-  },
-  trackInfo: {
-    flex: 1,
-  },
-  trackTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  trackArtist: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  albumItem: {
-    flex: 1,
-    margin: 8,
-    maxWidth: '50%',
-  },
-  albumArtwork: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: 8,
-  },
-  albumArtworkText: {
-    fontSize: 48,
-    fontWeight: 'bold' as const,
-    color: COLORS.text,
-    opacity: 0.6,
-  },
-  albumName: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  albumArtist: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  albumTrackCount: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  artistItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  artistAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginRight: 12,
-  },
-  artistAvatarText: {
-    fontSize: 24,
-    fontWeight: 'bold' as const,
-    color: COLORS.text,
-  },
-  artistInfo: {
-    flex: 1,
-  },
-  artistName: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  artistTrackCount: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  folderItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  folderIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginRight: 12,
-  },
-  folderInfo: {
-    flex: 1,
-  },
-  folderName: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  folderTrackCount: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
+  recentTitle: { fontSize: 12, color: COLORS.text },
+
+  listContent: { paddingBottom: MINI_PLAYER_HEIGHT + 16 },
+  gridContent: { paddingBottom: MINI_PLAYER_HEIGHT + 16 },
+
+  trackItem: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12 },
+  trackArtwork: { width: 48, height: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  trackInfo: { flex: 1 },
+  trackTitle: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  trackArtist: { fontSize: 13, color: COLORS.textSecondary },
+
+  albumItem: { flex: 1, margin: 8 },
+  albumArtwork: { aspectRatio: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  albumArtworkText: { fontSize: 40, opacity: 0.6 },
+  albumName: { fontSize: 14, fontWeight: '600' },
+  albumArtist: { fontSize: 12, color: COLORS.textSecondary },
+
+  artistItem: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12 },
+  artistAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  artistAvatarText: { fontSize: 20 },
+  artistInfo: { flex: 1 },
+  artistName: { fontSize: 16, fontWeight: '600' },
+  artistTrackCount: { fontSize: 13, color: COLORS.textSecondary },
+
+  folderItem: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12 },
+  folderIcon: { width: 48, height: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  folderInfo: { flex: 1 },
+  folderName: { fontSize: 16, fontWeight: '600' },
+  folderTrackCount: { fontSize: 13, color: COLORS.textSecondary },
+
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: 12, color: COLORS.textSecondary },
+  emptyTitle: { fontSize: 18, color: COLORS.textSecondary },
 });

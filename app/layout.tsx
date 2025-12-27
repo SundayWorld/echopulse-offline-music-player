@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useCallback } from "react";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { MusicPlayerProvider } from "@/contexts/MusicPlayerContext";
@@ -18,13 +18,13 @@ function RootLayoutNav() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen 
-          name="now-playing" 
-          options={{ 
+        <Stack.Screen
+          name="now-playing"
+          options={{
             headerShown: false,
             presentation: "card",
-            animation: "slide_from_bottom"
-          }} 
+            animation: "slide_from_bottom",
+          }}
         />
       </Stack>
     </>
@@ -32,21 +32,24 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  useEffect(() => {
-    SplashScreen.hideAsync();
+  const onLayoutRootView = useCallback(async () => {
+    // Hide splash ONLY after everything is mounted
+    await SplashScreen.hideAsync();
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <SettingsProvider>
-        <MusicLibraryProvider>
-          <MusicPlayerProvider>
-            <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <QueryClientProvider client={queryClient}>
+        <SettingsProvider>
+          <MusicLibraryProvider>
+            <MusicPlayerProvider>
               <RootLayoutNav />
-            </GestureHandlerRootView>
-          </MusicPlayerProvider>
-        </MusicLibraryProvider>
-      </SettingsProvider>
-    </QueryClientProvider>
+            </MusicPlayerProvider>
+          </MusicLibraryProvider>
+        </SettingsProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
+
+

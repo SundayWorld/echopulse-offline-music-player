@@ -1,6 +1,6 @@
 import createContextHook from '@nkzw/create-context-hook';
 import * as MediaLibrary from 'expo-media-library';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Track, Album, Artist, Folder } from '@/types/music';
@@ -9,6 +9,8 @@ const FAVORITES_STORAGE_KEY = '@echopulse_favorites';
 const RECENT_STORAGE_KEY = '@echopulse_recent';
 const LAST_TAB_STORAGE_KEY = '@echopulse_last_tab';
 
+const PAGE_SIZE = 200;
+
 export const [MusicLibraryProvider, useMusicLibrary] = createContextHook(() => {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -16,231 +18,181 @@ export const [MusicLibraryProvider, useMusicLibrary] = createContextHook(() => {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>([]);
-  const [lastSelectedTab, setLastSelectedTab] = useState<string>('songs');
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [hasPermission, setHasPermission] = useState<boolean>(false);
+  const [lastSelectedTab, setLastSelectedTab] = useState('songs');
 
-  const extractTitle = (filename: string): string => {
-    return filename.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
-  };
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasPermission, setHasPermission] = useState(false);
+  const [hasMoreTracks, setHasMoreTracks] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const extractFolder = (uri: string): string => {
-    const parts = uri.split('/');
-    return parts[parts.length - 2] || 'Root';
-  };
+  const cursorRef = useRef<string | null>(null);
+  const scanningRef = useRef(false);
 
-  const organizeLibrary = useCallback((allTracks: Track[]) => {
+  const extractTitle = (filename: string) =>
+    filename.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
+
+  const extractFolder = (uri: string) =>
+    uri.split('/').slice(-2, -1)[0] || 'Root';
+
+  const mapAssets = (assets: MediaLibrary.Asset[]): Track[] =>
+    assets.map(a => ({
+      id: a.id,
+      uri: a.uri,
+      filename: a.filename,
+      title: extractTitle(a.filename),
+      artist: 'Unknown Artist',
+      album: 'Unknown Album',
+      duration: a.duration,
+      folder: extractFolder(a.uri),
+    }));
+
+  const organizeLibrary = useCallback((all: Track[]) => {
     const albumMap = new Map<string, Track[]>();
     const artistMap = new Map<string, Track[]>();
     const folderMap = new Map<string, Track[]>();
 
-    allTracks.forEach((track) => {
-      if (!albumMap.has(track.album)) {
-        albumMap.set(track.album, []);
-      }
-      albumMap.get(track.album)!.push(track);
-
-      if (!artistMap.has(track.artist)) {
-        artistMap.set(track.artist, []);
-      }
-      artistMap.get(track.artist)!.push(track);
-
-      if (track.folder) {
-        if (!folderMap.has(track.folder)) {
-          folderMap.set(track.folder, []);
-        }
-        folderMap.get(track.folder)!.push(track);
+    all.forEach(t => {
+      albumMap.set(t.album, [...(albumMap.get(t.album) || []), t]);
+      artistMap.set(t.artist, [...(artistMap.get(t.artist) || []), t]);
+      if (t.folder) {
+        folderMap.set(t.folder, [...(folderMap.get(t.folder) || []), t]);
       }
     });
 
-    const albumList: Album[] = Array.from(albumMap.entries()).map(([name, tracks]) => ({
+    setAlbums([...albumMap.entries()].map(([name, tracks]) => ({
       id: name,
       name,
-      artist: tracks[0].artist,
+      artist: tracks[0]?.artist ?? 'Unknown',
       tracks,
-    }));
+    })));
 
-    const artistList: Artist[] = Array.from(artistMap.entries()).map(([name, tracks]) => ({
+    setArtists([...artistMap.entries()].map(([name, tracks]) => ({
       id: name,
       name,
       tracks,
-    }));
+    })));
 
-    const folderList: Folder[] = Array.from(folderMap.entries()).map(([name, tracks]) => ({
+    setFolders([...folderMap.entries()].map(([name, tracks]) => ({
       name,
       tracks,
-    }));
-
-    setAlbums(albumList);
-    setArtists(artistList);
-    setFolders(folderList);
+    })));
   }, []);
 
+  /** INITIAL SCAN */
   const scanLibrary = useCallback(async () => {
+    if (scanningRef.current) return;
+
     try {
+      scanningRef.current = true;
       setIsLoading(true);
-      const media = await MediaLibrary.getAssetsAsync({
+
+      const res = await MediaLibrary.getAssetsAsync({
         mediaType: 'audio',
-        first: 1000,
+        first: PAGE_SIZE,
       });
 
-      const scannedTracks: Track[] = media.assets.map((asset) => ({
-        id: asset.id,
-        uri: asset.uri,
-        filename: asset.filename,
-        title: extractTitle(asset.filename),
-        artist: 'Unknown Artist',
-        album: 'Unknown Album',
-        duration: asset.duration,
-        folder: extractFolder(asset.uri),
-      }));
+      const mapped = mapAssets(res.assets);
+      setTracks(mapped);
+      organizeLibrary(mapped);
 
-      setTracks(scannedTracks);
-      organizeLibrary(scannedTracks);
-    } catch (error) {
-      console.error('Library scan error:', error);
+      cursorRef.current = res.endCursor ?? null;
+      setHasMoreTracks(res.hasNextPage);
+    } catch (e) {
+      console.error('Scan error', e);
     } finally {
       setIsLoading(false);
+      scanningRef.current = false;
     }
   }, [organizeLibrary]);
 
-  const requestPermissions = useCallback(async () => {
-    try {
-      if (Platform.OS === 'web') {
-        setHasPermission(false);
-        setIsLoading(false);
-        return;
-      }
+  /** LOAD MORE */
+  const loadMoreTracks = useCallback(async () => {
+    if (!hasMoreTracks || isLoadingMore || !cursorRef.current) return;
 
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      setHasPermission(status === 'granted');
-      
-      if (status === 'granted') {
-        await scanLibrary();
-      } else {
-        setIsLoading(false);
-      }
-    } catch (error) {
-      console.error('Permission error:', error);
-      setHasPermission(false);
+    try {
+      setIsLoadingMore(true);
+
+      const res = await MediaLibrary.getAssetsAsync({
+        mediaType: 'audio',
+        first: PAGE_SIZE,
+        after: cursorRef.current,
+      });
+
+      const mapped = mapAssets(res.assets);
+
+      setTracks(prev => {
+        const merged = [...prev, ...mapped];
+        organizeLibrary(merged);
+        return merged;
+      });
+
+      cursorRef.current = res.endCursor ?? null;
+      setHasMoreTracks(res.hasNextPage);
+    } catch (e) {
+      console.error('Load more error', e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [hasMoreTracks, isLoadingMore, organizeLibrary]);
+
+  /** PULL TO REFRESH */
+  const refreshLibrary = useCallback(async () => {
+    setIsRefreshing(true);
+    cursorRef.current = null;
+    setHasMoreTracks(true);
+    await scanLibrary();
+    setIsRefreshing(false);
+  }, [scanLibrary]);
+
+  const requestPermissions = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      setIsLoading(false);
+      return;
+    }
+
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    setHasPermission(status === 'granted');
+
+    if (status === 'granted') {
+      await scanLibrary();
+    } else {
       setIsLoading(false);
     }
   }, [scanLibrary]);
 
   useEffect(() => {
-    const loadFavorites = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
-        if (stored) {
-          setFavorites(new Set(JSON.parse(stored)));
-        }
-      } catch (error) {
-        console.error('Failed to load favorites:', error);
-      }
-    };
+    (async () => {
+      const fav = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
+      if (fav) setFavorites(new Set(JSON.parse(fav)));
 
-    const loadRecentlyPlayed = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(RECENT_STORAGE_KEY);
-        if (stored) {
-          setRecentlyPlayed(JSON.parse(stored));
-        }
-      } catch (error) {
-        console.error('Failed to load recently played:', error);
-      }
-    };
+      const recent = await AsyncStorage.getItem(RECENT_STORAGE_KEY);
+      if (recent) setRecentlyPlayed(JSON.parse(recent));
 
-    const loadLastTab = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(LAST_TAB_STORAGE_KEY);
-        if (stored) {
-          setLastSelectedTab(stored);
-        }
-      } catch (error) {
-        console.error('Failed to load last tab:', error);
-      }
-    };
+      const tab = await AsyncStorage.getItem(LAST_TAB_STORAGE_KEY);
+      if (tab) setLastSelectedTab(tab);
 
-    const init = async () => {
-      await loadFavorites();
-      await loadRecentlyPlayed();
-      await loadLastTab();
       await requestPermissions();
-    };
-    init();
+    })();
   }, [requestPermissions]);
-
-  const saveFavorites = async (newFavorites: Set<string>) => {
-    try {
-      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(Array.from(newFavorites)));
-    } catch (error) {
-      console.error('Failed to save favorites:', error);
-    }
-  };
-
-  const toggleFavorite = (trackId: string) => {
-    const newFavorites = new Set(favorites);
-    if (newFavorites.has(trackId)) {
-      newFavorites.delete(trackId);
-    } else {
-      newFavorites.add(trackId);
-    }
-    setFavorites(newFavorites);
-    saveFavorites(newFavorites);
-  };
-
-  const isFavorite = (trackId: string): boolean => {
-    return favorites.has(trackId);
-  };
-
-  const getFavoriteTracks = (): Track[] => {
-    return tracks.filter((track) => favorites.has(track.id));
-  };
-
-  const saveRecentlyPlayed = async (recent: Track[]) => {
-    try {
-      await AsyncStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(recent));
-    } catch (error) {
-      console.error('Failed to save recently played:', error);
-    }
-  };
-
-  const addToRecentlyPlayed = (track: Track) => {
-    const filtered = recentlyPlayed.filter((t) => t.id !== track.id);
-    const updated = [track, ...filtered].slice(0, 20);
-    setRecentlyPlayed(updated);
-    saveRecentlyPlayed(updated);
-  };
-
-  const saveLastTab = async (tab: string) => {
-    try {
-      await AsyncStorage.setItem(LAST_TAB_STORAGE_KEY, tab);
-    } catch (error) {
-      console.error('Failed to save last tab:', error);
-    }
-  };
-
-  const updateLastTab = (tab: string) => {
-    setLastSelectedTab(tab);
-    saveLastTab(tab);
-  };
 
   return {
     tracks,
     albums,
     artists,
     folders,
-    favorites,
     recentlyPlayed,
     lastSelectedTab,
+
     isLoading,
+    isLoadingMore,
+    isRefreshing,
     hasPermission,
-    toggleFavorite,
-    isFavorite,
-    getFavoriteTracks,
-    addToRecentlyPlayed,
-    updateLastTab,
-    requestPermissions,
-    scanLibrary,
+    hasMoreTracks,
+
+    loadMoreTracks,
+    refreshLibrary,
   };
 });
+
+
