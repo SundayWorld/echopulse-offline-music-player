@@ -29,6 +29,8 @@ export const [MusicLibraryProvider, useMusicLibrary] = createContextHook(() => {
   const cursorRef = useRef<string | null>(null);
   const scanningRef = useRef(false);
 
+  /* ---------------- helpers ---------------- */
+
   const extractTitle = (filename: string) =>
     filename.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
 
@@ -60,35 +62,57 @@ export const [MusicLibraryProvider, useMusicLibrary] = createContextHook(() => {
       }
     });
 
-    setAlbums([...albumMap.entries()].map(([name, tracks]) => ({
-      id: name,
-      name,
-      artist: tracks[0]?.artist ?? 'Unknown',
-      tracks,
-    })));
+    setAlbums(
+      [...albumMap.entries()].map(([name, tracks]) => ({
+        id: name,
+        name,
+        artist: tracks[0]?.artist ?? 'Unknown',
+        tracks,
+      }))
+    );
 
-    setArtists([...artistMap.entries()].map(([name, tracks]) => ({
-      id: name,
-      name,
-      tracks,
-    })));
+    setArtists(
+      [...artistMap.entries()].map(([name, tracks]) => ({
+        id: name,
+        name,
+        tracks,
+      }))
+    );
 
-    setFolders([...folderMap.entries()].map(([name, tracks]) => ({
-      name,
-      tracks,
-    })));
+    setFolders(
+      [...folderMap.entries()].map(([name, tracks]) => ({
+        name,
+        tracks,
+      }))
+    );
   }, []);
 
-  /** INITIAL SCAN */
+  /* ---------------- PERMISSION (ANDROID 10+ SAFE) ---------------- */
+
+  const requestPermissions = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') {
+      setHasPermission(true);
+      return true;
+    }
+
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    const granted = status === 'granted';
+
+    setHasPermission(granted);
+    return granted;
+  }, []);
+
+  /* ---------------- INITIAL SCAN ---------------- */
+
   const scanLibrary = useCallback(async () => {
-    if (scanningRef.current) return;
+    if (scanningRef.current || !hasPermission) return;
 
     try {
       scanningRef.current = true;
       setIsLoading(true);
 
       const res = await MediaLibrary.getAssetsAsync({
-        mediaType: 'audio',
+        mediaType: MediaLibrary.MediaType.audio,
         first: PAGE_SIZE,
       });
 
@@ -104,17 +128,19 @@ export const [MusicLibraryProvider, useMusicLibrary] = createContextHook(() => {
       setIsLoading(false);
       scanningRef.current = false;
     }
-  }, [organizeLibrary]);
+  }, [hasPermission, organizeLibrary]);
 
-  /** LOAD MORE */
+  /* ---------------- LOAD MORE ---------------- */
+
   const loadMoreTracks = useCallback(async () => {
-    if (!hasMoreTracks || isLoadingMore || !cursorRef.current) return;
+    if (!hasPermission || !hasMoreTracks || isLoadingMore || !cursorRef.current)
+      return;
 
     try {
       setIsLoadingMore(true);
 
       const res = await MediaLibrary.getAssetsAsync({
-        mediaType: 'audio',
+        mediaType: MediaLibrary.MediaType.audio,
         first: PAGE_SIZE,
         after: cursorRef.current,
       });
@@ -134,32 +160,21 @@ export const [MusicLibraryProvider, useMusicLibrary] = createContextHook(() => {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [hasMoreTracks, isLoadingMore, organizeLibrary]);
+  }, [hasPermission, hasMoreTracks, isLoadingMore, organizeLibrary]);
 
-  /** PULL TO REFRESH */
+  /* ---------------- REFRESH ---------------- */
+
   const refreshLibrary = useCallback(async () => {
+    if (!hasPermission) return;
+
     setIsRefreshing(true);
     cursorRef.current = null;
     setHasMoreTracks(true);
     await scanLibrary();
     setIsRefreshing(false);
-  }, [scanLibrary]);
+  }, [hasPermission, scanLibrary]);
 
-  const requestPermissions = useCallback(async () => {
-    if (Platform.OS === 'web') {
-      setIsLoading(false);
-      return;
-    }
-
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    setHasPermission(status === 'granted');
-
-    if (status === 'granted') {
-      await scanLibrary();
-    } else {
-      setIsLoading(false);
-    }
-  }, [scanLibrary]);
+  /* ---------------- INIT ---------------- */
 
   useEffect(() => {
     (async () => {
@@ -172,9 +187,14 @@ export const [MusicLibraryProvider, useMusicLibrary] = createContextHook(() => {
       const tab = await AsyncStorage.getItem(LAST_TAB_STORAGE_KEY);
       if (tab) setLastSelectedTab(tab);
 
-      await requestPermissions();
+      const granted = await requestPermissions();
+      if (granted) {
+        await scanLibrary();
+      } else {
+        setIsLoading(false);
+      }
     })();
-  }, [requestPermissions]);
+  }, [requestPermissions, scanLibrary]);
 
   return {
     tracks,

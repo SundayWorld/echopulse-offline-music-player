@@ -24,12 +24,13 @@
 
     "android": {
       "package": "app.echopulse.offlineplayer",
-      "versionCode": 2,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundImage": "./assets/images/adaptive-icon-bg.png"
       },
       "permissions": [
+        "READ_EXTERNAL_STORAGE",
         "READ_MEDIA_AUDIO",
         "FOREGROUND_SERVICE"
       ]
@@ -56,3 +57,4 @@
     }
   }
 }
+
